@@ -1,0 +1,6 @@
+product_id,name,category,price,stock
+101,Laptop,Electronics,999.99,50
+102,Smartphone,Electronics,499.99,100
+103,Headphones,Electronics,99.99,200
+104,Coffee Maker,Home,49.99,75
+105,Blender,Home,39.99,60
