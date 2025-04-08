@@ -16,6 +16,23 @@ services:
     networks:
       - data_platform_network
 
+  pgadmin:
+    image: elestio/pgadmin
+    platform: linux/arm64
+    env_file:
+      - .env
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${POSTGRES_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${POSTGRES_PASSWORD}
+      PGADMIN_LISTEN_PORT: 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./services/pgadmin/config/servers.json:/pgadmin4/servers.json
+    networks:
+      - data_platform_network
+
   initializer:
     build:
       context: .
@@ -36,4 +53,5 @@ networks:
 
 volumes:
   postgres_data:
+  pgadmin_data:
   initializer_data:
