@@ -2,6 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Copy .env
+COPY .env /app/.env
+
 # Copy files
 COPY services/initializer/ .
 
