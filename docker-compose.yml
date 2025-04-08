@@ -1,24 +1,39 @@
 services:
   postgres:
     image: postgres:17.4
-    container_name: postgres
     platform: linux/arm64
+    env_file:
+      - .env
+    container_name: postgres
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      # Podmiana domyślnego pliku konfiguracyjnego na nasz własny
-      - ./config/postgres/postgresql.conf:/etc/postgresql/postgresql.conf
-      # Miejsce na dane bazy – trwały zapis na hoście
-      - ./data/postgres:/var/lib/postgresql/data
-    # Nadpisujemy domyślną komendę uruchamiając Postgresa z naszym plikiem konfiguracyjnym
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data_platform_network
+
+  initializer:
+    build:
+      context: .
+      dockerfile: services/initializer/Dockerfile
+    env_file:
+      - .env
+    container_name: initializer
+    depends_on:
+      - postgres
+    volumes:
+      - initializer_data:/app
     networks:
       - data_platform_network
 
 networks:
   data_platform_network:
     driver: bridge
+
+volumes:
+  postgres_data:
+  initializer_data:

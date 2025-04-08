@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, create_engine
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
@@ -75,19 +75,3 @@ class OrderItem(Base):
     
     def __repr__(self):
         return f"<OrderItem(order_id={self.order_id}, product_id={self.product_id}, quantity={self.quantity})>"
-    
-def get_db_session(db_url):
-    """
-    Create a database session using the provided URL.
-    
-    Args:
-        db_url: SQLAlchemy database URL
-        
-    Returns:
-        SQLAlchemy session object
-    """
-    
-    engine = create_engine(db_url)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    return Session()
