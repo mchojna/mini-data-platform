@@ -28,11 +28,26 @@ services:
     networks:
       - data_platform_network
 
+  generator:
+    build:
+      context: .
+      dockerfile: services/generator/Dockerfile
+    env_file:
+      - .env
+    container_name: generator
+    depends_on:
+      - postgres
+      - initializer
+    volumes:
+      - generator_data:/app
+    networks:
+      - data_platform_network
+
 networks:
   data_platform_network:
     driver: bridge
 
 volumes:
   postgres_data:
-  pgadmin_data:
   initializer_data:
+  generator_data:
