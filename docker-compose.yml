@@ -1,45 +1,131 @@
 services:
   postgres:
     image: debezium/postgres:17-alpine
-    platform: linux/arm64
-    env_file:
-      - .env
     container_name: postgres
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    command: >
+      postgres 
+      -c wal_level=logical
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c shared_preload_libraries=pgoutput
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - data_platform_network
 
-  initializer:
+  data_initializer:
     build:
       context: .
-      dockerfile: services/initializer/Dockerfile
-    env_file:
-      - .env
-    container_name: initializer
+      dockerfile: services/data_initializer/Dockerfile
+    container_name: data_initializer
     depends_on:
       - postgres
     volumes:
-      - initializer_data:/app
+      - data_initializer_data:/app
     networks:
       - data_platform_network
 
-  generator:
+  data_generator:
     build:
       context: .
-      dockerfile: services/generator/Dockerfile
-    env_file:
-      - .env
-    container_name: generator
+      dockerfile: services/data_generator/Dockerfile
+    container_name: data_generator
     depends_on:
       - postgres
-      - initializer
+      - data_initializer
     volumes:
-      - generator_data:/app
+      - data_generator_data:/app
+    networks:
+      - data_platform_network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.9.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - data_platform_network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.9.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    networks:
+      - data_platform_network
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.9.0
+    container_name: schema-registry
+    depends_on:
+      - kafka
+    ports:
+      - "8081:8081"
+    environment:
+      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=kafka:9092
+      - SCHEMA_REGISTRY_HOST_NAME=schema-registry
+      - SCHEMA_REGISTRY_LISTENERS=http://0.0.0.0:8081
+    networks:
+      - data_platform_network
+
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.9.0
+    container_name: kafka-connect
+    depends_on:
+      - kafka
+      - postgres
+      - schema-registry
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: connect-cluster
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/connectors
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
+    command: >
+      bash -c '
+        echo "Installing connector plugins"
+        confluent-hub install --no-prompt debezium/debezium-connector-postgresql:2.3.0
+        #
+        echo "Launching Kafka Connect worker"
+        /etc/confluent/docker/run
+      '
+    volumes:
+      - ./services/kafka_connect/src/connector-config:/etc/kafka-connect/connector-config
     networks:
       - data_platform_network
 
@@ -49,5 +135,5 @@ networks:
 
 volumes:
   postgres_data:
-  initializer_data:
-  generator_data:
+  data_initializer_data:
+  data_generator_data:

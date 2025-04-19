@@ -2,11 +2,11 @@ FROM python:3.13.3-alpine
 
 WORKDIR /app
 
-# Copy .env
-COPY .env /app/.env
-
 # Copy files
-COPY services/generator/ .
+COPY services/data_initializer/src/ ./src/
+
+# Copy data
+COPY data/input/ /app/data/
 
 # Install required packages
 RUN pip install --no-cache-dir -r src/requirements.txt
@@ -15,5 +15,4 @@ RUN pip install --no-cache-dir -r src/requirements.txt
 ENV PYTHONPATH=/app
 
 # Run the business simulator
-CMD ["python", "/app/src/generator.py"]
-    
+CMD ["python", "/app/src/data_initializer.py"]

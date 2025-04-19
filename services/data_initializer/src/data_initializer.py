@@ -14,17 +14,17 @@ from models import Base, Customer, Product, Order, OrderItem
 load_dotenv(".env")
 
 # Database connection parameters
-DB_USER = os.getenv("POSTGRES_USER")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-DB_HOST = os.getenv("POSTGRES_HOST")
-DB_PORT = os.getenv("POSTGRES_PORT")
-DB_NAME = os.getenv("POSTGRES_DB")
+DB_USER = os.getenv("POSTGRES_USER", "postgres")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+DB_HOST = os.getenv("POSTGRES_HOST", "postgres")
+DB_PORT = os.getenv("POSTGRES_PORT", "5432")
+DB_NAME = os.getenv("POSTGRES_DB", "postgres")
 
 # Database connection URL
 DB_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Paths to CSV files
-DATA_DIR = os.getenv("DATA_DIR")
+DATA_DIR = os.getenv("DATA_DIR", "/app/data/")
 CUSTOMER_CSV = os.path.join(DATA_DIR, "customers.csv")
 PRODUCTS_CSV = os.path.join(DATA_DIR, "products.csv")
 ORDERS_CSV = os.path.join(DATA_DIR, "orders.csv")
@@ -44,32 +44,34 @@ console_handler.setFormatter(formatter)
 if not logger.handlers:
     logger.addHandler(console_handler)
 
-class Initializer():
+class DataInitializer():
+    """
+    Class to initialize database, load CSV data, and insert records into PostgreSQL.
+    """
     def __init__(self, db_url: str, data_dir):
         self.db_url = db_url
         self.data_dir = data_dir
-        
         self.customers_csv = os.path.join(self.data_dir, "customers.csv")
         self.products_csv = os.path.join(self.data_dir, "products.csv")
         self.orders_csv = os.path.join(self.data_dir, "orders.csv")
- 
+
     def wait_for_postgres(self, engine: Engine, max_retries: int, delay: int) -> bool:
         """Wait for PostgreSQL to be available"""
         for i in range(max_retries):
             try:
-                with engine.connect() as conn:
+                with engine.connect():
                     logger.info("Successfully connected to PostgreSQL")
                     return True
-            except Exception as e:
+            except Exception:
                 logger.info(f"Waiting for PostgreSQL to be available... ({i+1}/{max_retries})")
                 time.sleep(delay)
         return False
-    
+
     def setup_database(self, engine: Engine) -> None:
         """Create database tables"""
         Base.metadata.create_all(engine)
         logger.info("Database tables created successfully")
-    
+
     def load_csv_data(self, file_path: str) -> pd.DataFrame:
         """Load data from a CSV file"""
         try:
@@ -77,7 +79,7 @@ class Initializer():
         except Exception as e:
             logger.info(f"Error loading CSV file {file_path}: {e}")
             return pd.DataFrame()
-        
+
     def insert_customers(self, session: Session, customers_df: pd.DataFrame) -> None:
         """Insert customer data into the database"""
         inserted_customers = 0
@@ -93,10 +95,10 @@ class Initializer():
                 )
                 session.add(customer)
                 inserted_customers += 1
-    
+
         session.commit()
         logger.info(f"Inserted {inserted_customers} customers")
-    
+
     def insert_products(self, session: Session, products_df: pd.DataFrame) -> None:
         """Insert product data into the database"""
         inserted_products = 0
@@ -113,10 +115,10 @@ class Initializer():
                 )
                 session.add(product)
                 inserted_products += 1
-        
+
         session.commit()
         logger.info(f"Inserted {inserted_products} products")
-        
+
     def insert_orders(self, session: Session, orders_df: pd.DataFrame, products_df: pd.DataFrame) -> None:
         """Insert order data into the database"""
         inserted_orders = 0
@@ -146,21 +148,21 @@ class Initializer():
                         price=product['price']
                     )
                     session.add(order_item)
-        
+
         session.commit()
         print(f"Inserted {inserted_orders} orders with items")
-        
+
     def __call__(self) -> None:
         """Main function to initalize"""
         engine = create_engine(self.db_url)
-        
+
         # Wait for PostgreSQL to be available
         if not self.wait_for_postgres(engine, max_retries=20, delay=2):
             return
-        
+
         # Set up database
         self.setup_database(engine=engine)
-        
+
         # Create session
         with Session(engine) as session:
             try:
@@ -168,18 +170,18 @@ class Initializer():
                 customers_df = self.load_csv_data(self.customers_csv)
                 products_df = self.load_csv_data(self.products_csv)
                 orders_df = self.load_csv_data(self.orders_csv)
-                
+
                 if customers_df.empty or products_df.empty or orders_df.empty:
                     logger.info("One or more CSV files could not be loaded. Exiting.")
                     return
-                
+
                 # Insert data into the database
                 self.insert_customers(session, customers_df)
                 self.insert_products(session, products_df)
                 self.insert_orders(session, orders_df, products_df)
-                
+
                 logger.info("Initialization completed successfully")
-            
+
             except SQLAlchemyError as e:
                 session.rollback()
                 logger.info(f"Database error: {e}")
@@ -188,5 +190,5 @@ class Initializer():
                 logger.info(f"Error during initialization: {e}")
 
 if __name__ == "__main__":
-    initializer = Initializer(db_url=DB_URL, data_dir=DATA_DIR)
-    initializer()
+    data_initializer = DataInitializer(db_url=DB_URL, data_dir=DATA_DIR)
+    data_initializer()

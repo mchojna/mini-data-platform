@@ -4,7 +4,6 @@ import random
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-import pandas as pd
 from sqlalchemy import create_engine, Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -15,11 +14,11 @@ from faker import Faker
 load_dotenv(".env")
 
 # Database connection parameters
-DB_USER = os.getenv("POSTGRES_USER")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-DB_HOST = os.getenv("POSTGRES_HOST")
-DB_PORT = os.getenv("POSTGRES_PORT")
-DB_NAME = os.getenv("POSTGRES_DB")
+DB_USER = os.getenv("POSTGRES_USER", "postgres")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+DB_HOST = os.getenv("POSTGRES_HOST", "postgres")
+DB_PORT = os.getenv("POSTGRES_PORT", "5432")
+DB_NAME = os.getenv("POSTGRES_DB", "postgres")
 
 # Database connection URL
 DB_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
@@ -39,7 +38,10 @@ console_handler.setFormatter(formatter)
 if not logger.handlers:
     logger.addHandler(console_handler)
 
-class Generator():
+class DataGenerator():
+    """
+    Class to generate random customers, orders, and products, and update the database accordingly.
+    """
     def __init__(self, db_url: str):
         self.db_url = db_url
         
@@ -132,7 +134,7 @@ class Generator():
             logger.info("No products found")
             return
 
-        product = random.choince(products)
+        product = random.choice(products)
         
         # Update stock
         old_stock = product.stock
@@ -178,6 +180,6 @@ class Generator():
             time.sleep(wait_time)
     
 if __name__ == "__main__":
-    time.sleep(60)
-    generator = Generator(db_url=DB_URL)
-    generator()
+    time.sleep(30)
+    data_generator = DataGenerator(db_url=DB_URL)
+    data_generator()
