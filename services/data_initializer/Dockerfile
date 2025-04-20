@@ -11,6 +11,7 @@ COPY data/input/ /app/data/
 
 # Install required packages
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r utilities/requirements.txt
 
 # Set Python path to include scripts directory
 ENV PYTHONPATH=/app
