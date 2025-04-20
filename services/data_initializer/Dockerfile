@@ -3,7 +3,8 @@ FROM python:3.13.3-alpine
 WORKDIR /app
 
 # Copy files
-COPY services/data_initializer/ /app/
+COPY source/data_initializer/ /app/
+COPY source/utilities/ /app/utilities/
 
 # Copy data
 COPY data/input/ /app/data/

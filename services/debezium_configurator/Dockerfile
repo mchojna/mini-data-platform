@@ -3,7 +3,11 @@ FROM python:3.13.3-alpine
 WORKDIR /app
 
 # Copy files
-COPY services/debezium_configurator/ /app/
+COPY source/debezium_configurator/ /app/
+COPY source/utilities/ /app/utilities/
+
+# Copy data
+COPY config/debezium/connector_config.json /app/
 
 # Install required packages
 RUN pip install --no-cache-dir -r requirements.txt
@@ -12,4 +16,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV PYTHONPATH=/app
 
 # Run the configuration script
-CMD ["python", "debezium_configurator.py"]
+CMD ["python", "/app/debezium_configurator.py"]

@@ -3,7 +3,8 @@ FROM python:3.13.3-alpine
 WORKDIR /app
 
 # Copy files
-COPY services/data_generator/ /app/
+COPY source/data_generator/ /app/
+COPY source/utilities/ /app/utilities/
 
 # Install required packages
 RUN pip install --no-cache-dir -r requirements.txt

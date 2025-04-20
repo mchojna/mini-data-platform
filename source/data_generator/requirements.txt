@@ -1,0 +1,8 @@
+Faker==37.1.0
+dotenv==0.9.9
+numpy==2.2.4
+pandas==2.2.3
+python-dotenv==1.1.0
+SQLAlchemy==2.0.40
+psycopg2-binary==2.9.10
+requests==2.32.3
