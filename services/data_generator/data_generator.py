@@ -124,7 +124,7 @@ class DataGenerator():
             session.add(order_item)
             
         session.commit()
-        print(f"Generated new order: {order} with {len(selected_products)} items")
+        logger.info(f"Generated new order: {order} with {len(selected_products)} items")
 
     def generate_product(self, session):
         "Generate a new product"
