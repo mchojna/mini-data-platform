@@ -1,6 +1,7 @@
 services:
   postgres:
     image: debezium/postgres:17-alpine
+    platform: linux/arm64
     container_name: postgres
     ports:
       - "5432:5432"
@@ -9,57 +10,77 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     command: >
-      postgres 
-      -c wal_level=logical
-      -c max_wal_senders=10
-      -c max_replication_slots=10
-      -c shared_preload_libraries=pgoutput
+      postgres  -c wal_level=logical -c max_wal_senders=10 -c max_replication_slots=10 -c shared_preload_libraries=pgoutput
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - data_platform_network
+      - network
 
-  data_initializer:
+  data-initializer:
     build:
       context: .
       dockerfile: services/data_initializer/Dockerfile
-    container_name: data_initializer
+    container_name: data-initializer
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     volumes:
-      - data_initializer_data:/app
+      - initializer_data:/app
     networks:
-      - data_platform_network
+      - network
 
-  data_generator:
+  data-generator:
     build:
       context: .
       dockerfile: services/data_generator/Dockerfile
-    container_name: data_generator
+    container_name: data-generator
     depends_on:
-      - postgres
-      - data_initializer
-    volumes:
-      - data_generator_data:/app
+      postgres:
+        condition: service_healthy
+      debezium-configurator:
+        condition: service_completed_successfully
     networks:
-      - data_platform_network
+      - network
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.9.0
+    platform: linux/arm64
     container_name: zookeeper
     ports:
       - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
     networks:
-      - data_platform_network
+      - network
 
   kafka:
     image: confluentinc/cp-kafka:7.9.0
+    platform: linux/arm64
     container_name: kafka
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
       - "29092:29092"
@@ -70,70 +91,117 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+    restart: unless-stopped  
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     networks:
-      - data_platform_network
+      - network
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.9.0
     container_name: schema-registry
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     ports:
       - "8081:8081"
     environment:
-      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=kafka:9092
-      - SCHEMA_REGISTRY_HOST_NAME=schema-registry
-      - SCHEMA_REGISTRY_LISTENERS=http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8081 || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     networks:
-      - data_platform_network
+      - network
 
-  kafka-connect:
-    image: confluentinc/cp-kafka-connect:7.9.0
-    container_name: kafka-connect
+  kafka-connector:
+    image: quay.io/debezium/connect:3.1.0.Final
+    platform: linux/arm64
+    container_name: kafka-connector
     depends_on:
-      - kafka
-      - postgres
-      - schema-registry
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
     ports:
       - "8083:8083"
     environment:
-      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
-      CONNECT_REST_PORT: 8083
-      CONNECT_GROUP_ID: connect-cluster
-      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
-      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
-      CONNECT_STATUS_STORAGE_TOPIC: connect-status
-      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: kafka-connector
+      CONFIG_STORAGE_TOPIC: connect-configs
+      OFFSET_STORAGE_TOPIC: connect-offsets
+      STATUS_STORAGE_TOPIC: connect-status
+      KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
       CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
       CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
       CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
-      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/connectors
-      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
-    command: >
-      bash -c '
-        echo "Installing connector plugins"
-        confluent-hub install --no-prompt debezium/debezium-connector-postgresql:2.3.0
-        #
-        echo "Launching Kafka Connect worker"
-        /etc/confluent/docker/run
-      '
-    volumes:
-      - ./services/kafka_connect/src/connector-config:/etc/kafka-connect/connector-config
+      KAFKA_CONNECT_PLUGINS_DIR: /kafka/connect/
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8083/ || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
-      - data_platform_network
+      - network
+    volumes:
+      - ./config/debezium/confluentinc-kafka-connect-avro-converter-7.9.0/lib:/kafka/connect/libs
+
+  debezium-configurator:
+    build:
+      context: .
+      dockerfile: services/debezium_configurator/Dockerfile
+    container_name: debezium-configurator
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-connector:
+        condition: service_healthy
+    networks:
+      - network
+
+  kafka-consumer:
+    build:
+      context: .
+      dockerfile: services/kafka_consumer/Dockerfile
+    container_name: kafka-consumer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      debezium-configurator:
+        condition: service_completed_successfully
+    networks:
+      - network
 
 networks:
-  data_platform_network:
+  network:
     driver: bridge
 
 volumes:
   postgres_data:
-  data_initializer_data:
-  data_generator_data:
+  initializer_data:
+  kafka_data:
+  zookeeper_data:
