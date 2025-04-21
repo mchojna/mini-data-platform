@@ -1,8 +1,16 @@
+"""Spark processor with Delta Lake and MinIO integration."""
+
 import os
 from typing import List, Dict
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, window
+from pyspark.sql.functions import col
 from pyspark.sql.avro.functions import from_avro
+
+from minio_configurator import MinioConfigurator  # Fixed import
+from delta_lake_writer import DeltaLakeWriter  # Fixed import
+from utilities.logger import Logger
+
+logger = Logger.get_logger(__name__)
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 TOPICS = [
@@ -66,148 +74,217 @@ SCHEMAS = {
 
 
 class SparkProcessor:
-    """
-    Spark Structured Streaming job to read AVRO messages from Kafka topics,
-    deserialize using inline schemas, and perform basic transformations.
-    """
+    """Spark processor that writes to Delta Lake format in MinIO."""
 
-    def __init__(self, kafka_bootstrap_servers: str, topics: List, schemas: Dict):
+    def __init__(
+        self,
+        kafka_bootstrap_servers: str,
+        topics: List,
+        schemas: Dict,
+        minio_config: MinioConfigurator,
+        delta_writer: DeltaLakeWriter,
+    ):
         self.kafka_bootstrap_servers = kafka_bootstrap_servers
         self.topics = topics
         self.schemas = schemas
+        self.minio_config = minio_config
+        self.delta_writer = delta_writer
+
+    def initialize_spark(self) -> SparkSession:
+        """Initialize and configure Spark with Delta Lake and MinIO."""
+        try:
+            builder = SparkSession.builder.appName("SparkProcessor")
+            
+            # Configure Delta Lake
+            builder = (
+                builder.config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+                .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+                .config("spark.delta.logStore.class", "org.apache.spark.sql.delta.storage.S3SingleDriverLogStore")
+            )
+            
+            # Create Spark session
+            spark = builder.master("spark://spark-master:7077").getOrCreate()
+            
+            # Configure MinIO
+            self.minio_config.configure_spark(spark)
+            
+            return spark
+        except Exception as e:
+            logger.info(f"Failed to initialize Spark session: {e}")
+            raise
 
     def process_products(self, spark, schemas):
-        topic = "debezium.public.products"
-        df = (
-            spark.readStream.format("kafka")
-            .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers)
-            .option("subscribe", topic)
-            .option("startingOffsets", "earliest")
-            .load()
-        )
-        df_avro = df.select(from_avro(col("value"), schemas[topic]).alias("data"))
-        df_transformed = df_avro.select(
-            col("data.product_id"),
-            col("data.name"),
-            col("data.category"),
-            col("data.price"),
-            col("data.stock"),
-        )
-        return df_transformed
+        """Process products and write to Delta Lake."""
+        try:
+            # Read from Kafka and process products
+            df = spark.readStream \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
+                .option("subscribe", "debezium.public.products") \
+                .load()
+
+            # Parse Avro data
+            df_transformed = df.select(
+                from_avro(col("value"), schemas["debezium.public.products"]).alias("data")
+            ).select("data.*")
+
+            # Write to Delta Lake
+            self.delta_writer.write_stream_to_delta(
+                df_transformed, "products", partition_by=["category"]
+            )
+            
+            return df_transformed
+        except Exception as e:
+            logger.info(f"Failed to process products: {e}")
+            raise
 
     def process_orders(self, spark, schemas):
-        topic = "debezium.public.orders"
-        df = (
-            spark.readStream.format("kafka")
-            .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers)
-            .option("subscribe", topic)
-            .option("startingOffsets", "earliest")
-            .load()
-        )
-        df_avro = df.select(from_avro(col("value"), schemas[topic]).alias("data"))
-        df_transformed = df_avro.select(
-            col("data.order_id"),
-            col("data.customer_id"),
-            col("data.order_date"),
-            col("data.total_amount"),
-        )
-        return df_transformed
+        """Process orders and write to Delta Lake."""
+        # Read from Kafka and process orders
+        try:
+            # Read from Kafka and process orders
+            df = spark.readStream \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
+                .option("subscribe", "debezium.public.orders") \
+                .load()
+
+            # Parse Avro data
+            df_transformed = df.select(
+                from_avro(col("value"), schemas["debezium.public.orders"]).alias("data")
+            ).select("data.*")
+
+            # Write to Delta Lake
+            self.delta_writer.write_stream_to_delta(
+                df_transformed, "orders", partition_by=["order_date"]
+            )
+            
+            return df_transformed
+        except Exception as e:
+            logger.info(f"Failed to process orders: {e}")
+            raise
 
     def process_order_items(self, spark, schemas):
-        topic = "debezium.public.order_items"
-        df = (
-            spark.readStream.format("kafka")
-            .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers)
-            .option("subscribe", topic)
-            .option("startingOffsets", "earliest")
-            .load()
-        )
-        df_avro = df.select(from_avro(col("value"), schemas[topic]).alias("data"))
-        df_transformed = df_avro.select(
-            col("data.id"),
-            col("data.order_id"),
-            col("data.product_id"),
-            col("data.quantity"),
-            col("data.price"),
-        )
-        return df_transformed
+        """Process order items and write to Delta Lake."""
+        try:
+            # Read from Kafka and process order items
+            df = spark.readStream \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
+                .option("subscribe", "debezium.public.order_items") \
+                .load()
 
-    def analyze_orders_by_window(self, spark, schemas):
-        # Example: count orders per 1 minute window
-        topic = "debezium.public.orders"
-        df = (
-            spark.readStream.format("kafka")
-            .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers)
-            .option("subscribe", topic)
-            .option("startingOffsets", "earliest")
-            .load()
-        )
-        df_avro = df.select(from_avro(col("value"), schemas[topic]).alias("data"))
-        # Use order_date as event time (cast to timestamp if needed)
-        df_with_ts = df_avro.withColumn(
-            "order_ts", col("data.order_date").cast("timestamp")
-        )
-        df_windowed = (
-            df_with_ts.groupBy(window(col("order_ts"), "1 minute"))
-            .count()
-            .select(
-                col("window.start").alias("window_start"),
-                col("window.end").alias("window_end"),
-                col("count").alias("orders_count"),
+            # Parse Avro data
+            df_transformed = df.select(
+                from_avro(col("value"), schemas["debezium.public.order_items"]).alias("data")
+            ).select("data.*")
+
+            # Write to Delta Lake
+            self.delta_writer.write_stream_to_delta(
+                df_transformed, "order_items", partition_by=["order_id"]
             )
-        )
-        return df_windowed
+            
+            return df_transformed
+        except Exception as e:
+            logger.info(f"Failed to process order items: {e}")
+            raise
+
+    def process_customers(self, spark, schemas):
+        """Process customers and write to Delta Lake."""
+        try:
+            # Read from Kafka and process customers
+            df = spark.readStream \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
+                .option("subscribe", "debezium.public.customers") \
+                .load()
+
+            # Parse Avro data
+            df_transformed = df.select(
+                from_avro(col("value"), schemas["debezium.public.customers"]).alias("data")
+            ).select("data.*")
+
+            # Write to Delta Lake
+            self.delta_writer.write_stream_to_delta(
+                df_transformed, "customers", partition_by=["registration_date"]
+            )
+            
+            return df_transformed
+        except Exception as e:
+            logger.info(f"Failed to process customers: {e}")
+            raise
 
     def __call__(self):
-        spark = SparkSession.builder.appName("SparkProcessor").master("spark://spark-master:7077").getOrCreate()
-        queries = []
+        """Main processing logic."""
+        try:
+            logger.info("Starting Spark processing pipeline...")
+            
+            # Initialize components
+            spark = self.initialize_spark()
 
-        # Process products
-        df_products = self.process_products(spark, self.schemas)
-        queries.append(
-            df_products.writeStream.outputMode("append")
-            .format("console")
-            .option("truncate", False)
-            .option("numRows", 10)
-            .start()
-        )
+            # Ensure bucket exists
+            self.minio_config.ensure_bucket_exists(self.delta_writer.bucket)
 
-        # Process orders
-        df_orders = self.process_orders(spark, self.schemas)
-        queries.append(
-            df_orders.writeStream.outputMode("append")
-            .format("console")
-            .option("truncate", False)
-            .option("numRows", 10)
-            .start()
-        )
+            # Process each data type
+            queries = []
+            
+            # Process customers
+            df_customers = self.process_customers(spark, self.schemas)
+            queries.append(
+                df_customers.writeStream.outputMode("append")
+                .format("console")
+                .option("truncate", False)
+                .start()
+            )
 
-        # Process order_items
-        df_order_items = self.process_order_items(spark, self.schemas)
-        queries.append(
-            df_order_items.writeStream.outputMode("append")
-            .format("console")
-            .option("truncate", False)
-            .option("numRows", 10)
-            .start()
-        )
+            # Process products
+            df_products = self.process_products(spark, self.schemas)
+            queries.append(
+                df_products.writeStream.outputMode("append")
+                .format("console")
+                .option("truncate", False)
+                .start()
+            )
 
-        # Analyze orders by window
-        df_orders_window = self.analyze_orders_by_window(spark, self.schemas)
-        queries.append(
-            df_orders_window.writeStream.outputMode("complete")
-            .format("console")
-            .option("truncate", False)
-            .option("numRows", 10)
-            .start()
-        )
+            # Process orders
+            df_orders = self.process_orders(spark, self.schemas)
+            queries.append(
+                df_orders.writeStream.outputMode("append").format("console").start()
+            )
 
-        for q in queries:
-            q.awaitTermination()
+            # Process order items
+            df_order_items = self.process_order_items(spark, self.schemas)
+            queries.append(
+                df_order_items.writeStream.outputMode("append").format("console").start()
+            )
+
+            # Wait for all queries to complete
+            for query in queries:
+                query.awaitTermination()
+
+            logger.info("Spark processing pipeline completed successfully.")
+        except Exception as e:
+            logger.info(f"Error in Spark processing pipeline: {e}")
+            raise
 
 
 if __name__ == "__main__":
-    spark_processor = SparkProcessor(
-        kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, topics=TOPICS, schemas=SCHEMAS
+    # MinIO configuration
+    minio_config = MinioConfigurator(
+        endpoint="http://minio:9000",
+        access_key="minioadmin",
+        secret_key="minioadmin",
     )
-    spark_processor()
+
+    # Delta writer configuration
+    delta_writer = DeltaLakeWriter(bucket="processed-data")  # Ensure bucket matches
+
+    # Create and run processor
+    processor = SparkProcessor(
+        kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        topics=TOPICS,
+        schemas=SCHEMAS,
+        minio_config=minio_config,
+        delta_writer=delta_writer,
+    )
+    processor()

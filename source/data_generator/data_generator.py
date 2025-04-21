@@ -160,7 +160,7 @@ class DataGenerator:
                     session.rollback()
                     logger.info(f"Error during initialization: {e}")
 
-            wait_time = random.randint(2, 10)
+            wait_time = random.randint(0, 2)
             logger.info(f"Waiting {wait_time} seconds before next action...")
             time.sleep(wait_time)
 
