@@ -2,13 +2,9 @@
 
 This project implements a mini data platform using Docker containers that simulates a business process, ingests data into PostgreSQL, captures changes with Debezium, streams data through Kafka, processes it in Spark, and stores it in MinIO in Delta format.
 
----
-
 ## Objective
 
 Develop a mini data platform using Docker containers that simulates a business process, ingests data into PostgreSQL, captures changes with Debezium, streams data through Kafka, processes it in Spark, and stores it in MinIO in Delta format.
-
----
 
 ## Table of Contents
 
@@ -19,8 +15,6 @@ Develop a mini data platform using Docker containers that simulates a business p
 - [Monitoring & Logs](#monitoring--logs)
 - [Development](#development)
 - [License](#license)
-
----
 
 ## Project Structure
 
@@ -54,8 +48,6 @@ Develop a mini data platform using Docker containers that simulates a business p
     └── utilities/
 ```
 
----
-
 ## Requirements
 
 - [Docker](https://www.docker.com/) (v20+ recommended)
@@ -63,8 +55,6 @@ Develop a mini data platform using Docker containers that simulates a business p
 - 8GB+ RAM recommended for Spark and Kafka
 - Unix-like OS (Linux/macOS recommended)
 - Python 3.11+ (for local development, not needed for Docker deployment)
-
----
 
 ## Component Overview
 
@@ -78,9 +68,6 @@ Develop a mini data platform using Docker containers that simulates a business p
 - **Spark Processor**: Reads from Kafka, processes data, and writes to MinIO in Delta format.
 - **MinIO**: S3-compatible object storage for processed data.
 - **Zookeeper**: Coordinates Kafka brokers.
-
----
-
 
 ## Task-by-Task Breakdown & Deliverables
 
@@ -132,8 +119,6 @@ Develop a mini data platform using Docker containers that simulates a business p
   - Fully automated `docker-compose.yml` with all services.
   - Updated documentation for scratch deployment.
 
----
-
 ## How to Deploy (from Scratch)
 
 ### 1. Clone the Repository
@@ -177,8 +162,6 @@ docker compose logs -f
 
 - Open [http://localhost:9001](http://localhost:9001) (default credentials: `minioadmin` / `minioadmin`).
 
----
-
 ## Monitoring & Logs
 
 - **Centralized logs** are stored in the `logs/` directory (mounted from containers).
@@ -187,8 +170,6 @@ docker compose logs -f
 - **MinIO Console**: [http://localhost:9001](http://localhost:9001)
 - **Kafka Connect UI**: [http://localhost:8083](http://localhost:8083)
 - **Schema Registry UI**: [http://localhost:8081](http://localhost:8081)
-
----
 
 ## Development
 
@@ -217,7 +198,6 @@ python data_generator.py
 - Unit tests should be placed in `source/<service_name>/tests/`.
 - Use `pytest` or `unittest` as appropriate.
 
----
 
 ## License
 
