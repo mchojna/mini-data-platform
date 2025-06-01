@@ -235,11 +235,11 @@ services:
     restart: unless-stopped
     healthcheck:
       <<: *default-healthcheck
-      test:
-        [
-          "CMD-SHELL",
-          "curl -f http://localhost:${KAFKA_CONNECT_PORT}/ || exit 1",
-        ]
+      # test:
+      #   [
+      #     "CMD-SHELL",
+      #     "curl -f http://localhost:${KAFKA_CONNECT_PORT}/ || exit 1",
+      #   ]
     networks:
       - network
     volumes:
@@ -431,6 +431,31 @@ services:
     labels:
       com.mini-data-platform.service: "storage"
       com.mini-data-platform.component: "minio"
+    <<: *default-logging
+
+  # Kafka UI Service - provides a web UI for managing Kafka clusters
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports:
+      - "8070:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "mini-data-platform"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:${KAFKA_INTERNAL_PORT}"
+      KAFKA_CLUSTERS_0_ZOOKEEPER: "zookeeper:${ZOOKEEPER_PORT}"
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: "http://schema-registry:${SCHEMA_REGISTRY_PORT}"
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    networks:
+      - network
+    restart: unless-stopped
+    labels:
+      com.mini-data-platform.service: "ui"
+      com.mini-data-platform.component: "kafka-ui"
     <<: *default-logging
 
 # Network Configuration

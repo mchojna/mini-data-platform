@@ -124,7 +124,7 @@ Develop a mini data platform using Docker containers that simulates a business p
 ### 1. Clone the Repository
 
 ```sh
-git clone <https://github.com/mchojna/mini-data-platform>
+git clone <https://github.com/mchojna/mini-data-platform.git>
 cd mini-data-platform
 ```
 
