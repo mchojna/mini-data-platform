@@ -16,5 +16,5 @@ RUN pip install --no-cache-dir -r utilities/requirements.txt
 # Set Python path to include scripts directory
 ENV PYTHONPATH=/app
 
-# Run the business simulator
+# Run the data initalizer
 CMD ["python", "/app/data_initializer.py"]
