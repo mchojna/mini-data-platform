@@ -5,6 +5,7 @@ WORKDIR /app
 # Copy files
 COPY source/data_initializer/ /app/
 COPY source/utilities/ /app/utilities/
+COPY .env /app/
 
 # Copy data
 COPY data/input/ /app/data/

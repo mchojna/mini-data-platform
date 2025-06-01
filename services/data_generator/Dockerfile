@@ -5,6 +5,7 @@ WORKDIR /app
 # Copy files
 COPY source/data_generator/ /app/
 COPY source/utilities/ /app/utilities/
+COPY .env /app/
 
 # Install required packages
 RUN pip install --no-cache-dir -r requirements.txt

@@ -5,6 +5,7 @@ WORKDIR /app
 # Copy files
 COPY source/debezium_configurator/ /app/
 COPY source/utilities/ /app/utilities/
+COPY .env /app/
 
 # Copy data
 COPY config/debezium/connector_config.json /app/

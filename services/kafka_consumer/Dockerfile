@@ -5,6 +5,7 @@ WORKDIR /app
 # Copy files
 COPY source/kafka_consumer/ /app/
 COPY source/utilities/ /app/utilities/
+COPY .env /app/
 
 # Install dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
