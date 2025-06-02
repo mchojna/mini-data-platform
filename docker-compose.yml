@@ -164,7 +164,7 @@ services:
       com.mini-data-platform.component: "kafka"
     <<: *default-logging
 
-  # Schema Registry Service - manages Avro schemas for Kafka messages
+  # Schema Registry Service - manages schemas for Kafka messages (supports JSON schemas)
   schema-registry:
     image: confluentinc/cp-schema-registry:${CONFLUENT_VERSION}
     container_name: schema-registry
@@ -223,27 +223,19 @@ services:
       CONFIG_STORAGE_TOPIC: connect-configs
       OFFSET_STORAGE_TOPIC: connect-offsets
       STATUS_STORAGE_TOPIC: connect-status
-      KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:${SCHEMA_REGISTRY_PORT}
-      VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:${SCHEMA_REGISTRY_PORT}
-      KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
-      VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:${SCHEMA_REGISTRY_PORT}
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:${SCHEMA_REGISTRY_PORT}
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
       KAFKA_CONNECT_PLUGINS_DIR: /kafka/connect/
     restart: unless-stopped
     healthcheck:
       <<: *default-healthcheck
-      # test:
-      #   [
-      #     "CMD-SHELL",
-      #     "curl -f http://localhost:${KAFKA_CONNECT_PORT}/ || exit 1",
-      #   ]
     networks:
       - network
     volumes:
-      - ./config/debezium/confluentinc-kafka-connect-avro-converter-7.9.0/lib:/kafka/connect/libs
       - logs:/var/log/kafka-connect
     labels:
       com.mini-data-platform.service: "connecting"
@@ -443,7 +435,7 @@ services:
       schema-registry:
         condition: service_healthy
     ports:
-      - "8070:8080"
+      - "${KAFKA_UI_EXTERNAL_PORT}:${KAFKA_UI_INTERNAL_PORT}"
     environment:
       KAFKA_CLUSTERS_0_NAME: "mini-data-platform"
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:${KAFKA_INTERNAL_PORT}"

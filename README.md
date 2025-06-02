@@ -63,7 +63,7 @@ Develop a mini data platform using Docker containers that simulates a business p
 - **Data Generator**: Simulates business events and inserts/updates data in PostgreSQL.
 - **Debezium (Kafka Connect)**: Captures changes from PostgreSQL and streams them to Kafka topics.
 - **Kafka**: Message broker for streaming data.
-- **Schema Registry**: Manages Avro schemas for Kafka topics.
+- **Schema Registry**: Manages schemas for Kafka topics (supports JSON schemas).
 - **Kafka Consumer**: Reads and validates messages from Kafka topics.
 - **Spark Processor**: Reads from Kafka, processes data, and writes to MinIO in Delta format.
 - **MinIO**: S3-compatible object storage for processed data.
@@ -80,28 +80,28 @@ Develop a mini data platform using Docker containers that simulates a business p
 
 ### Task 2: Connecting Debezium to Capture Changes in PostgreSQL
 
-- **Topics**: Debezium setup, Kafka connector, AVRO/JSON serialization.
+- **Topics**: Debezium setup, Kafka connector, JSON serialization.
 - **Deliverables**:
   - Debezium service in `docker-compose.yml`.
   - PostgreSQL with logical replication enabled.
-  - Debezium configured for AVRO messages.
-  - Verified change capture from PostgreSQL to Kafka in AVRO format.
+  - Debezium configured for JSON messages.
+  - Verified change capture from PostgreSQL to Kafka in JSON format.
 
-### Task 3: Kafka Setup & Streaming Events in AVRO Format
+### Task 3: Kafka Setup & Streaming Events in JSON Format
 
-- **Topics**: Kafka cluster, AVRO topics, Schema Registry, Kafka consumer.
+- **Topics**: Kafka cluster, JSON topics, Schema Registry, Kafka consumer.
 - **Deliverables**:
   - Kafka cluster in `docker-compose.yml`.
-  - Kafka with AVRO serialization.
-  - Schema Registry for AVRO schemas.
-  - Kafka consumer script to read and decode AVRO messages.
+  - Kafka with JSON serialization.
+  - Schema Registry for JSON schemas.
+  - Kafka consumer script to read and decode JSON messages.
 
 ### Task 4: Integrating Spark with Kafka for Data Processing
 
-- **Topics**: Spark Structured Streaming, Kafka integration, AVRO deserialization, basic transformations.
+- **Topics**: Spark Structured Streaming, Kafka integration, JSON deserialization, basic transformations.
 - **Deliverables**:
   - Spark container in `docker-compose.yml`.
-  - Spark job reading AVRO messages from Kafka.
+  - Spark job reading JSON messages from Kafka.
   - Basic transformation on streamed data.
 
 ### Task 5: Storing Processed Data in MinIO using Delta Lake

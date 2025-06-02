@@ -1,13 +1,10 @@
-"""Kafka consumer to read and validate AVRO messages from Debezium topics."""
+"""Kafka consumer to read and validate JSON messages from Debezium topics."""
 
 import os
 import time
 import json
 from typing import Dict, Any
 from confluent_kafka import Consumer
-from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroDeserializer
-from confluent_kafka.serialization import SerializationContext, MessageField
 from kafka.admin import KafkaAdminClient, NewTopic
 from dotenv import load_dotenv
 
@@ -18,7 +15,6 @@ load_dotenv()
 
 # Kafka configuration
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
 GROUP_ID = os.getenv("GROUP_ID", "kafka-consumer-group")
 
 # Topics to subscribe to
@@ -35,17 +31,13 @@ logger = Logger.get_logger(__name__)
 
 class KafkaConsumer:
     """
-    Kafka consumer that deserializes and logs AVRO messages from Debezium change data capture topics.
+    Kafka consumer that deserializes and logs JSON messages from Debezium change data capture topics.
     """
 
-    def __init__(self, bootstrap_servers: str, schema_registry_url: str, group_id: str):
-        """Initialize Kafka consumer with Schema Registry."""
+    def __init__(self, bootstrap_servers: str, group_id: str):
+        """Initialize Kafka consumer for JSON messages."""
         self.bootstrap_servers = bootstrap_servers
-        self.schema_registry_url = schema_registry_url
         self.group_id = group_id
-
-        # Initialize Schema Registry client
-        self.schema_registry_client = SchemaRegistryClient({"url": schema_registry_url})
 
         # Initialize consumer
         self.consumer = Consumer(
@@ -55,20 +47,6 @@ class KafkaConsumer:
                 "auto.offset.reset": "earliest",
             }
         )
-
-        # Initialize deserializers for each topic
-        self.deserializers = {}
-        for topic in TOPICS:
-            try:
-                schema = self.schema_registry_client.get_latest_version(
-                    f"{topic}-value"
-                ).schema
-                self.deserializers[topic] = AvroDeserializer(
-                    schema_registry_client=self.schema_registry_client,
-                    schema_str=schema.schema_str,
-                )
-            except Exception as e:
-                logger.info(f"Error getting schema for topic {topic}: {e}")
 
     def wait_for_topics(self, max_retries: int = 30, delay: int = 10) -> bool:
         """Wait for Kafka topics to be created."""
@@ -101,16 +79,13 @@ class KafkaConsumer:
         return False
 
     def decode_message(self, message: Any, topic: str) -> Dict:
-        """Decode AVRO message using the appropriate deserializer."""
+        """Decode JSON message."""
         try:
-            deserializer = self.deserializers.get(topic)
-            if deserializer:
-                return deserializer(
-                    message.value(), SerializationContext(topic, MessageField.VALUE)
-                )
+            if message.value():
+                return json.loads(message.value().decode('utf-8'))
             return None
         except Exception as e:
-            logger.info(f"Error decoding message from topic {topic}: {e}")
+            logger.info(f"Error decoding JSON message from topic {topic}: {e}")
             return None
 
     def process_message(self, message: Any) -> None:
@@ -156,7 +131,6 @@ class KafkaConsumer:
 if __name__ == "__main__":
     consumer = KafkaConsumer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        schema_registry_url=SCHEMA_REGISTRY_URL,
         group_id=GROUP_ID,
     )
     consumer()

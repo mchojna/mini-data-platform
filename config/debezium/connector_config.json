@@ -12,10 +12,10 @@
         "schema.include.list": "public",
         "table.include.list": "public.customers,public.products,public.orders,public.order_items",
         "topic.prefix": "debezium",
-        "key.converter": "io.confluent.connect.avro.AvroConverter",
-        "value.converter": "io.confluent.connect.avro.AvroConverter",
-        "key.converter.schema.registry.url": "http://schema-registry:8081",
-        "value.converter.schema.registry.url": "http://schema-registry:8081",
+        "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "key.converter.schemas.enable": "false",
+        "value.converter.schemas.enable": "false",
         "decimal.handling.mode": "double"
     }
 }

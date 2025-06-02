@@ -3,8 +3,8 @@
 import os
 from typing import List, Dict
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
-from pyspark.sql.avro.functions import from_avro
+from pyspark.sql.functions import col, from_json
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType, TimestampType
 
 from minio_configurator import MinioConfigurator
 from delta_lake_writer import DeltaLakeWriter
@@ -19,268 +19,117 @@ TOPICS = [
     "debezium.public.orders",
     "debezium.public.order_items",
 ]
-# SCHEMAS = {
-#     "debezium.public.customers": """
-#     {
-#     "type": "record",
-#     "name": "Envelope",
-#     "namespace": "debezium.public.customers",
-#     "fields": [
-#         {
-#         "name": "after",
-#         "type": [
-#             "null",
-#             {
-#             "type": "record",
-#             "name": "Value",
-#             "fields": [
-#                 { "name": "customer_id", "type": "int", "default": 0 },
-#                 { "name": "name", "type": "string" },
-#                 { "name": "email", "type": "string" },
-#                 {
-#                 "name": "registration_date",
-#                 "type": {
-#                     "type": "int",
-#                     "connect.version": 1,
-#                     "connect.name": "io.debezium.time.Date"
-#                 }
-#                 }
-#             ],
-#             "connect.name": "debezium.public.customers.Value"
-#             }
-#         ],
-#         "default": null
-#         }
-#     ]
-#     }
-#     """,
-#     "debezium.public.products": """
-#     {
-#     "type": "record",
-#     "name": "Envelope",
-#     "namespace": "debezium.public.products",
-#     "fields": [
-#         {
-#         "name": "after",
-#         "type": [
-#             "null",
-#             {
-#             "type": "record",
-#             "name": "Value",
-#             "fields": [
-#                 { "name": "product_id", "type": "int", "default": 0 },
-#                 { "name": "name", "type": "string" },
-#                 { "name": "category", "type": "string" },
-#                 { "name": "price", "type": "float" },
-#                 { "name": "stock", "type": "int" }
-#             ],
-#             "connect.name": "debezium.public.products.Value"
-#             }
-#         ],
-#         "default": null
-#         }
-#     ]
-#     }
-#     """,
-#     "debezium.public.orders": """
-#     {
-#     "type": "record",
-#     "name": "Envelope",
-#     "namespace": "debezium.public.orders",
-#     "fields": [
-#         {
-#         "name": "after",
-#         "type": [
-#             "null",
-#             {
-#             "type": "record",
-#             "name": "Value",
-#             "fields": [
-#                 { "name": "order_id", "type": "int", "default": 0 },
-#                 { "name": "customer_id", "type": "int" },
-#                 {
-#                 "name": "order_date",
-#                 "type": {
-#                     "type": "int",
-#                     "connect.version": 1,
-#                     "connect.name": "io.debezium.time.Date"
-#                 }
-#                 },
-#                 { "name": "total_amount", "type": "float" }
-#             ],
-#             "connect.name": "debezium.public.orders.Value"
-#             }
-#         ],
-#         "default": null
-#         }
-#     ]
-#     }
-#     """,
-#     "debezium.public.order_items": """
-#     {
-#     "type": "record",
-#     "name": "Envelope",
-#     "namespace": "debezium.public.order_items",
-#     "fields": [
-#         {
-#         "name": "after",
-#         "type": [
-#             "null",
-#             {
-#             "type": "record",
-#             "name": "Value",
-#             "fields": [
-#                 { "name": "order_item_id", "type": "int", "default": 0 },
-#                 { "name": "order_id", "type": "int" },
-#                 { "name": "product_id", "type": "int" },
-#                 { "name": "quantity", "type": "int" },
-#                 { "name": "price", "type": "float" }
-#             ],
-#             "connect.name": "debezium.public.order_items.Value"
-#             }
-#         ],
-#         "default": null
-#         }
-#     ]
-#     }
-#     """,
-# }
 
+# Debezium JSON message structure (with schemas.enable=false)
 SCHEMAS = {
-    "debezium.public.customers": """
-    {
-        "type": "record",
-        "name": "Envelope",
-        "namespace": "debezium.public.customers",
-        "fields": [
-            {
-                "name": "data",
-                "type": {
-                    "type": "record",
-                    "name": "DataRecord",
-                    "fields": [
-                        {
-                            "name": "after",
-                            "type": ["null", {
-                                "type": "record",
-                                "name": "CustomerValue",
-                                "fields": [
-                                    {"name": "customer_id", "type": ["null", "int"], "default": null},
-                                    {"name": "name", "type": ["null", "string"]},
-                                    {"name": "email", "type": ["null", "string"]},
-                                    {"name": "registration_date", "type": ["null", {
-                                        "type": "int",
-                                        "connect.version": 1,
-                                        "connect.name": "io.debezium.time.Date"
-                                    }]}
-                                ]
-                            }]
-                        }
-                    ]
-                }
-            }
-        ]
-    }
-    """,
-    "debezium.public.products": """
-    {
-        "type": "record",
-        "name": "Envelope",
-        "namespace": "debezium.public.products",
-        "fields": [
-            {
-                "name": "data",
-                "type": {
-                    "type": "record",
-                    "name": "DataRecord",
-                    "fields": [
-                        {
-                            "name": "after",
-                            "type": ["null", {
-                                "type": "record",
-                                "name": "ProductValue",
-                                "fields": [
-                                    {"name": "product_id", "type": ["null", "int"], "default": null},
-                                    {"name": "name", "type": ["null", "string"]},
-                                    {"name": "category", "type": ["null", "string"]},
-                                    {"name": "price", "type": ["null", "float"]},
-                                    {"name": "stock", "type": ["null", "int"]}
-                                ]
-                            }]
-                        }
-                    ]
-                }
-            }
-        ]
-    }
-    """,
-    "debezium.public.orders": """
-    {
-        "type": "record",
-        "name": "Envelope",
-        "namespace": "debezium.public.orders",
-        "fields": [
-            {
-                "name": "data",
-                "type": {
-                    "type": "record",
-                    "name": "DataRecord",
-                    "fields": [
-                        {
-                            "name": "after",
-                            "type": ["null", {
-                                "type": "record",
-                                "name": "OrderValue",
-                                "fields": [
-                                    {"name": "order_id", "type": ["null", "int"], "default": null},
-                                    {"name": "customer_id", "type": ["null", "int"]},
-                                    {"name": "order_date", "type": ["null", {
-                                        "type": "int",
-                                        "connect.version": 1,
-                                        "connect.name": "io.debezium.time.Date"
-                                    }]},
-                                    {"name": "total_amount", "type": ["null", "float"]}
-                                ]
-                            }]
-                        }
-                    ]
-                }
-            }
-        ]
-    }
-    """,
-    "debezium.public.order_items": """
-    {
-        "type": "record",
-        "name": "Envelope",
-        "namespace": "debezium.public.order_items",
-        "fields": [
-            {
-                "name": "data",
-                "type": {
-                    "type": "record",
-                    "name": "DataRecord",
-                    "fields": [
-                        {
-                            "name": "after",
-                            "type": ["null", {
-                                "type": "record",
-                                "name": "OrderItemValue",
-                                "fields": [
-                                    {"name": "order_item_id", "type": ["null", "int"], "default": null},
-                                    {"name": "order_id", "type": ["null", "int"]},
-                                    {"name": "product_id", "type": ["null", "int"]},
-                                    {"name": "quantity", "type": ["null", "int"]},
-                                    {"name": "price", "type": ["null", "float"]}
-                                ]
-                            }]
-                        }
-                    ]
-                }
-            }
-        ]
-    }
-    """
+    "debezium.public.customers": StructType([
+        StructField("after", StructType([
+            StructField("customer_id", IntegerType(), True),
+            StructField("name", StringType(), True),
+            StructField("email", StringType(), True),
+            StructField("registration_date", IntegerType(), True)
+        ]), True),
+        StructField("before", StructType([
+            StructField("customer_id", IntegerType(), True),
+            StructField("name", StringType(), True),
+            StructField("email", StringType(), True),
+            StructField("registration_date", IntegerType(), True)
+        ]), True),
+        StructField("op", StringType(), True),
+        StructField("ts_ms", IntegerType(), True),
+        StructField("source", StructType([
+            StructField("version", StringType(), True),
+            StructField("connector", StringType(), True),
+            StructField("name", StringType(), True),
+            StructField("ts_ms", IntegerType(), True),
+            StructField("snapshot", StringType(), True),
+            StructField("db", StringType(), True),
+            StructField("schema", StringType(), True),
+            StructField("table", StringType(), True)
+        ]), True)
+    ]),
+    "debezium.public.products": StructType([
+        StructField("after", StructType([
+            StructField("product_id", IntegerType(), True),
+            StructField("name", StringType(), True),
+            StructField("category", StringType(), True),
+            StructField("price", FloatType(), True),
+            StructField("stock", IntegerType(), True)
+        ]), True),
+        StructField("before", StructType([
+            StructField("product_id", IntegerType(), True),
+            StructField("name", StringType(), True),
+            StructField("category", StringType(), True),
+            StructField("price", FloatType(), True),
+            StructField("stock", IntegerType(), True)
+        ]), True),
+        StructField("op", StringType(), True),
+        StructField("ts_ms", IntegerType(), True),
+        StructField("source", StructType([
+            StructField("version", StringType(), True),
+            StructField("connector", StringType(), True),
+            StructField("name", StringType(), True),
+            StructField("ts_ms", IntegerType(), True),
+            StructField("snapshot", StringType(), True),
+            StructField("db", StringType(), True),
+            StructField("schema", StringType(), True),
+            StructField("table", StringType(), True)
+        ]), True)
+    ]),
+    "debezium.public.orders": StructType([
+        StructField("after", StructType([
+            StructField("order_id", IntegerType(), True),
+            StructField("customer_id", IntegerType(), True),
+            StructField("order_date", IntegerType(), True),
+            StructField("total_amount", FloatType(), True)
+        ]), True),
+        StructField("before", StructType([
+            StructField("order_id", IntegerType(), True),
+            StructField("customer_id", IntegerType(), True),
+            StructField("order_date", IntegerType(), True),
+            StructField("total_amount", FloatType(), True)
+        ]), True),
+        StructField("op", StringType(), True),
+        StructField("ts_ms", IntegerType(), True),
+        StructField("source", StructType([
+            StructField("version", StringType(), True),
+            StructField("connector", StringType(), True),
+            StructField("name", StringType(), True),
+            StructField("ts_ms", IntegerType(), True),
+            StructField("snapshot", StringType(), True),
+            StructField("db", StringType(), True),
+            StructField("schema", StringType(), True),
+            StructField("table", StringType(), True)
+        ]), True)
+    ]),
+    "debezium.public.order_items": StructType([
+        StructField("after", StructType([
+            StructField("order_item_id", IntegerType(), True),
+            StructField("order_id", IntegerType(), True),
+            StructField("product_id", IntegerType(), True),
+            StructField("quantity", IntegerType(), True),
+            StructField("price", FloatType(), True)
+        ]), True),
+        StructField("before", StructType([
+            StructField("order_item_id", IntegerType(), True),
+            StructField("order_id", IntegerType(), True),
+            StructField("product_id", IntegerType(), True),
+            StructField("quantity", IntegerType(), True),
+            StructField("price", FloatType(), True)
+        ]), True),
+        StructField("op", StringType(), True),
+        StructField("ts_ms", IntegerType(), True),
+        StructField("source", StructType([
+            StructField("version", StringType(), True),
+            StructField("connector", StringType(), True),
+            StructField("name", StringType(), True),
+            StructField("ts_ms", IntegerType(), True),
+            StructField("snapshot", StringType(), True),
+            StructField("db", StringType(), True),
+            StructField("schema", StringType(), True),
+            StructField("table", StringType(), True)
+        ]), True)
+    ])
 }
 
 
@@ -301,247 +150,6 @@ class SparkProcessor:
         self.minio_config = minio_config
         self.delta_writer = delta_writer
 
-    # def initialize_spark(self) -> SparkSession:
-    #     """Initialize and configure Spark with Delta Lake and MinIO."""
-    #     try:
-    #         builder = SparkSession.builder.appName("SparkProcessor")
-            
-    #         # Configure Delta Lake
-    #         builder = (
-    #             builder.config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-    #             .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-    #             .config("spark.delta.logStore.class", "org.apache.spark.sql.delta.storage.S3SingleDriverLogStore")
-    #         )
-            
-    #         # Create Spark session
-    #         spark = builder.master("spark://spark-master:7077").getOrCreate()
-            
-    #         # Configure MinIO
-    #         self.minio_config.configure_spark(spark)
-            
-    #         return spark
-    #     except Exception as e:
-    #         logger.info(f"Failed to initialize Spark session: {e}")
-    #         raise
-
-    # def process_products(self, spark, schemas):
-    #     """Process products and write to Delta Lake."""
-    #     try:
-    #         # Read from Kafka and process products
-    #         df = spark.readStream \
-    #             .format("kafka") \
-    #             .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
-    #             .option("subscribe", "debezium.public.products") \
-    #             .load()
-
-    #         # Parse Avro data
-    #         df_transformed = df.select(
-    #             from_avro(col("value"), schemas["debezium.public.products"]).alias("data")
-    #         ).select("data.after.*")
-
-    #         # Write to Delta Lake
-    #         self.delta_writer.write_stream_to_delta(
-    #             df_transformed, "products", partition_by=["category"]
-    #         )
-            
-    #         return df_transformed
-    #     except Exception as e:
-    #         logger.info(f"Failed to process products: {e}")
-    #         raise
-
-    # def process_orders(self, spark, schemas):
-    #     """Process orders and write to Delta Lake."""
-    #     # Read from Kafka and process orders
-    #     try:
-    #         # Read from Kafka and process orders
-    #         df = spark.readStream \
-    #             .format("kafka") \
-    #             .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
-    #             .option("subscribe", "debezium.public.orders") \
-    #             .load()
-
-    #         # Parse Avro data
-    #         df_transformed = df.select(
-    #             from_avro(col("value"), schemas["debezium.public.orders"]).alias("data")
-    #         ).select("data.after.*")
-
-    #         # Write to Delta Lake
-    #         self.delta_writer.write_stream_to_delta(
-    #             df_transformed, "orders", partition_by=["order_date"]
-    #         )
-            
-    #         return df_transformed
-    #     except Exception as e:
-    #         logger.info(f"Failed to process orders: {e}")
-    #         raise
-
-    # def process_order_items(self, spark, schemas):
-    #     """Process order items and write to Delta Lake."""
-    #     try:
-    #         # Read from Kafka and process order items
-    #         df = spark.readStream \
-    #             .format("kafka") \
-    #             .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
-    #             .option("subscribe", "debezium.public.order_items") \
-    #             .load()
-
-    #         # Parse Avro data
-    #         df_transformed = df.select(
-    #             from_avro(col("value"), schemas["debezium.public.order_items"]).alias("data")
-    #         ).select("data.after.*")
-
-    #         # Write to Delta Lake
-    #         self.delta_writer.write_stream_to_delta(
-    #             df_transformed, "order_items", partition_by=["order_id"]
-    #         )
-            
-    #         return df_transformed
-    #     except Exception as e:
-    #         logger.info(f"Failed to process order items: {e}")
-    #         raise
-
-    # def process_customers(self, spark, schemas):
-    #     """Process customers and write to Delta Lake."""
-    #     try:
-    #         # Read from Kafka and process customers
-    #         # df = spark.readStream \
-    #         #     .format("kafka") \
-    #         #     .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
-    #         #     .option("subscribe", "debezium.public.customers") \
-    #         #     .load()
-
-    #         # # Parse Avro data
-    #         # df_transformed = df.select(
-    #         #     from_avro(col("value"), schemas["debezium.public.customers"]).alias("data")
-    #         # ).select("data.after.*")
-
-    #         # # Write to Delta Lake
-    #         # self.delta_writer.write_stream_to_delta(
-    #         #     df_transformed, "customers", partition_by=["registration_date"]
-    #         # )
-    #         # 
-    #         # return df_transformed
-            
-    #         # Read from Kafka and process customers
-    #         df = spark.readStream \
-    #             .format("kafka") \
-    #             .option("kafka.bootstrap.servers", self.kafka_bootstrap_servers) \
-    #             .option("subscribe", "debezium.public.customers") \
-    #             .load()
-
-    #         # Print raw Kafka schema
-    #         logger.info("=== Original Kafka Schema ===")
-    #         df.printSchema()
-
-    #         # Print raw Kafka data with schema
-    #         df.writeStream \
-    #             .outputMode("append") \
-    #             .format("console") \
-    #             .option("truncate", False) \
-    #             .start() \
-    #             .awaitTermination(timeout=5)
-
-    #         # Parse Avro data and print its schema
-    #         df_with_schema = df.select(
-    #             from_avro(
-    #                 col("value"), 
-    #                 schemas["debezium.public.customers"],
-    #                 {"mode": "PERMISSIVE", "printSchema": True}  # This will print the actual Avro schema
-    #             ).alias("data")
-    #         )
-
-    #         # Print the schema after Avro deserialization
-    #         logger.info("=== Schema After Avro Deserialization ===")
-    #         df_with_schema.printSchema()
-            
-    #         # Continue with normal processing
-    #         df_transformed = df_with_schema.select("data.after.*")
-
-    #         return df_transformed            
-            
-    #     except Exception as e:
-    #         logger.info(f"Failed to process customers: {e}")
-    #         raise
-
-    # def __call__(self):
-    #     """Main processing logic."""
-    #     try:
-    #         logger.info("Starting Spark processing pipeline...")
-            
-    #         # Initialize components
-    #         spark = self.initialize_spark()
-            
-    #         # Set more verbose logging
-    #         spark.sparkContext.setLogLevel("DEBUG")
-
-    #         # Ensure bucket exists
-    #         self.minio_config.ensure_bucket_exists(self.delta_writer.bucket)
-
-    #         # Process each data type
-    #         queries = []
-            
-    #         ####
-            
-    #         for df, name in [
-    #             (self.process_customers(spark, self.schemas), "customers"),
-    #             (self.process_products(spark, self.schemas), "products"),
-    #             (self.process_orders(spark, self.schemas), "orders"),
-    #             (self.process_order_items(spark, self.schemas), "order_items")
-    #         ]:
-    #             logger.info(f"=== Processing {name} ===")
-    #             queries.append(
-    #                 df.writeStream
-    #                 .outputMode("append")
-    #                 .format("console")
-    #                 .option("truncate", False)
-    #                 .option("numRows", 20)
-    #                 .trigger(processingTime="10 seconds")  # Process every 10 seconds
-    #                 .start()
-    #             )
-
-    #         # Wait for all queries to complete
-    #         for query in queries:
-    #             query.awaitTermination()
-            
-    #         # # Process customers
-    #         # df_customers = self.process_customers(spark, self.schemas)
-    #         # queries.append(
-    #         #     df_customers.writeStream.outputMode("append")
-    #         #     .format("console")
-    #         #     .option("truncate", False)
-    #         #     .start()
-    #         # )
-
-    #         # # Process products
-    #         # df_products = self.process_products(spark, self.schemas)
-    #         # queries.append(
-    #         #     df_products.writeStream.outputMode("append")
-    #         #     .format("console")
-    #         #     .option("truncate", False)
-    #         #     .start()
-    #         # )
-
-    #         # # Process orders
-    #         # df_orders = self.process_orders(spark, self.schemas)
-    #         # queries.append(
-    #         #     df_orders.writeStream.outputMode("append").format("console").start()
-    #         # )
-
-    #         # # Process order items
-    #         # df_order_items = self.process_order_items(spark, self.schemas)
-    #         # queries.append(
-    #         #     df_order_items.writeStream.outputMode("append").format("console").start()
-    #         # )
-
-    #         # # Wait for all queries to complete
-    #         # for query in queries:
-    #         #     query.awaitTermination()
-
-    #         logger.info("Spark processing pipeline completed successfully.")
-    #     except Exception as e:
-    #         logger.info(f"Error in Spark processing pipeline: {e}")
-    #         raise
-
     def initialize_spark(self) -> SparkSession:
         """Initialize and configure Spark with Delta Lake and MinIO."""
         try:
@@ -552,6 +160,8 @@ class SparkProcessor:
                 builder.config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
                 .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
                 .config("spark.delta.logStore.class", "org.apache.spark.sql.delta.storage.S3SingleDriverLogStore")
+                .config("spark.databricks.delta.retentionDurationCheck.enabled", "false")
+                .config("spark.databricks.delta.merge.repartitionBeforeWrite.enabled", "true")
                 # Add S3A configurations
                 .config("spark.hadoop.fs.s3a.metrics.enabled", "false")
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
@@ -593,31 +203,35 @@ class SparkProcessor:
             logger.info(f"=== Raw Kafka Schema for {topic} ===")
             df.printSchema()
 
-            # Parse Avro data with schema
+            # Parse JSON data with schema
             df_with_schema = df.select(
-                from_avro(
-                    col("value"), 
-                    self.schemas[topic],
-                    {"mode": "PERMISSIVE"}
+                from_json(
+                    col("value").cast("string"), 
+                    self.schemas[topic]
                 ).alias("data")
             )
 
-            # Debug Avro parsed schema
-            logger.info(f"=== Avro Parsed Schema for {topic} ===")
+            # Debug JSON parsed schema
+            logger.info(f"=== JSON Parsed Schema for {topic} ===")
             df_with_schema.printSchema()
 
-            # Transform data - adjusted path to match actual schema
-            df_transformed = df_with_schema.select("data.data.after.*")
+            # Transform data - extract the 'after' field which contains the actual record data
+            df_transformed = df_with_schema.select("data.after.*")
             
-            # Write to Delta Lake
+            # Debug transformed schema
+            logger.info(f"=== Transformed Schema for {topic} ===")
+            df_transformed.printSchema()
+            
+            # Write to Delta Lake and return the query
             table_name = topic.split('.')[-1]  # Get last part of topic name
-            self.delta_writer.write_stream_to_delta(
+            logger.info(f"Writing {table_name} to Delta Lake with partition column: {partition_by}")
+            query = self.delta_writer.write_stream_to_delta(
                 df_transformed, 
                 table_name, 
                 partition_by=[partition_by]
             )
 
-            return df_transformed
+            return query
 
         except Exception as e:
             logger.error(f"Failed to process {topic}: {e}")
@@ -664,7 +278,9 @@ class SparkProcessor:
             spark = self.initialize_spark()
             # spark.sparkContext.setLogLevel("DEBUG")
 
-            # Ensure bucket exists
+            # Test MinIO connectivity and ensure bucket exists
+            if not self.minio_config.test_connectivity():
+                raise Exception("Failed to connect to MinIO")
             self.minio_config.ensure_bucket_exists(self.delta_writer.bucket)
 
             # Process all streams
@@ -678,21 +294,14 @@ class SparkProcessor:
 
             for process_fn, name in processors:
                 logger.info(f"=== Processing {name} ===")
-                df = process_fn(spark, self.schemas)
-                
-                query = df.writeStream \
-                    .outputMode("append") \
-                    .format("console") \
-                    .option("truncate", False) \
-                    .option("numRows", 20) \
-                    .option("numRows", 20) \
-                    .trigger(processingTime="5 seconds") \
-                    .option("checkpointLocation", f"/tmp/checkpoints/{name}") \
-                    .option("failOnDataLoss", "false") \
-                    .start()
-                    
+                query = process_fn(spark, self.schemas)
                 queries.append(query)
 
+            # Monitor and wait for all queries to complete
+            logger.info(f"Started {len(queries)} streaming queries")
+            for i, query in enumerate(queries):
+                logger.info(f"Query {i+1}: ID={query.id}, Status={query.status}")
+            
             # Wait for all queries to complete
             for query in queries:
                 query.awaitTermination()
@@ -702,14 +311,9 @@ class SparkProcessor:
             logger.error(f"Error in Spark processing pipeline: {e}")
             raise
 
-
 if __name__ == "__main__":
-    # MinIO configuration
-    minio_config = MinioConfigurator(
-        endpoint="http://minio:9000",
-        access_key="minioadmin",
-        secret_key="minioadmin",
-    )
+    # MinIO configuration (uses environment variables)
+    minio_config = MinioConfigurator()
 
     # Delta writer configuration
     delta_writer = DeltaLakeWriter(bucket="processed-data")  # Ensure bucket matches
